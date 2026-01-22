@@ -1,0 +1,10 @@
+{
+	"id": "external-file-links",
+	"name": "External File Links",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "Reference external files from your vault with inline previews for images, PDFs, audio, and video.",
+	"author": "Daniel de Haan",
+	"authorUrl": "",
+	"isDesktopOnly": true
+}

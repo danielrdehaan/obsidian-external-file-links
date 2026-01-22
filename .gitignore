@@ -1,0 +1,17 @@
+# Build output
+main.js
+
+# npm
+node_modules/
+package-lock.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Mac
+.DS_Store
+
+# Obsidian
+data.json

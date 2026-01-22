@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.obsidian.md)",
+      "WebFetch(domain:marcus.se.net)",
+      "WebFetch(domain:marcusolsson.github.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:marcusolsson.dev)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(ls:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
