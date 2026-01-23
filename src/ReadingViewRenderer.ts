@@ -1,7 +1,7 @@
-import { MarkdownPostProcessorContext, Plugin } from 'obsidian';
+import { MarkdownPostProcessorContext, Plugin, TFile } from 'obsidian';
 import { ExternalFileLinksSettings } from './types';
 import { renderExternalFile } from './FileRenderer';
-import { EMBED_PATTERN, LINK_PATTERN } from './utils';
+import { EMBED_PATTERN, LINK_PATTERN, createEmbedSyntax, createLinkSyntax } from './utils';
 
 export class ReadingViewRenderer {
 	private plugin: Plugin;
@@ -23,10 +23,10 @@ export class ReadingViewRenderer {
 
 	private postProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
 		// Process text nodes to find ext:// patterns
-		this.processElement(el);
+		this.processElement(el, ctx);
 	}
 
-	private processElement(el: HTMLElement): void {
+	private processElement(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
 		// Look for text content that matches our patterns
 		// First, handle any img elements that Obsidian might have created from our syntax
 		const images = el.querySelectorAll('img');
@@ -37,7 +37,7 @@ export class ReadingViewRenderer {
 			// Check if this is our ext:// pattern in alt text
 			// Obsidian parses ![ext:///path] and puts "ext:///path" in alt
 			if (alt.startsWith('ext://')) {
-				this.replaceImageWithExternalEmbed(img, alt);
+				this.replaceImageWithExternalEmbed(img, alt, ctx);
 			}
 		});
 
@@ -46,15 +46,15 @@ export class ReadingViewRenderer {
 		links.forEach((link) => {
 			const href = link.getAttribute('href') || '';
 			if (href.startsWith('ext://')) {
-				this.replaceLinkWithExternalLink(link, href);
+				this.replaceLinkWithExternalLink(link, href, ctx);
 			}
 		});
 
 		// Also check for any remaining text that wasn't parsed by Obsidian
-		this.processTextNodes(el);
+		this.processTextNodes(el, ctx);
 	}
 
-	private replaceImageWithExternalEmbed(img: HTMLElement, alt: string): void {
+	private replaceImageWithExternalEmbed(img: HTMLElement, alt: string, ctx: MarkdownPostProcessorContext): void {
 		// Parse alt text: "ext:///path" or "ext:///path|width"
 		const match = alt.match(/^ext:\/\/(.+?)(?:\|(\d+))?$/);
 		if (!match) return;
@@ -67,12 +67,13 @@ export class ReadingViewRenderer {
 			width,
 			isEmbed: true,
 			settings: this.settings,
+			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, true, width),
 		});
 
 		img.replaceWith(embed);
 	}
 
-	private replaceLinkWithExternalLink(link: HTMLElement, href: string): void {
+	private replaceLinkWithExternalLink(link: HTMLElement, href: string, ctx: MarkdownPostProcessorContext): void {
 		// Parse href: "ext:///path"
 		const filePath = href.replace(/^ext:\/\//, '');
 		const linkText = link.textContent || undefined;
@@ -82,12 +83,32 @@ export class ReadingViewRenderer {
 			isEmbed: false,
 			linkText,
 			settings: this.settings,
+			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, false, undefined, linkText),
 		});
 
 		link.replaceWith(externalLink);
 	}
 
-	private processTextNodes(el: HTMLElement): void {
+	private async handleRelocate(
+		ctx: MarkdownPostProcessorContext,
+		oldPath: string,
+		newPath: string,
+		isEmbed: boolean,
+		width?: number,
+		linkText?: string
+	): Promise<void> {
+		const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
+		if (!(file instanceof TFile)) return;
+
+		const content = await this.plugin.app.vault.read(file);
+		const oldSyntax = isEmbed ? createEmbedSyntax(oldPath, width) : createLinkSyntax(oldPath, linkText);
+		const newSyntax = isEmbed ? createEmbedSyntax(newPath, width) : createLinkSyntax(newPath, linkText);
+
+		const newContent = content.replace(oldSyntax, newSyntax);
+		await this.plugin.app.vault.modify(file, newContent);
+	}
+
+	private processTextNodes(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
 		const walker = document.createTreeWalker(
 			el,
 			NodeFilter.SHOW_TEXT,
@@ -131,13 +152,14 @@ export class ReadingViewRenderer {
 
 		// Process collected nodes (in reverse to avoid index issues)
 		for (const { node, matches } of nodesToProcess.reverse()) {
-			this.replaceTextNode(node, matches);
+			this.replaceTextNode(node, matches, ctx);
 		}
 	}
 
 	private replaceTextNode(
 		node: Text,
-		matches: Array<{ fullMatch: string; filePath: string; width?: number; isEmbed: boolean; linkText?: string }>
+		matches: Array<{ fullMatch: string; filePath: string; width?: number; isEmbed: boolean; linkText?: string }>,
+		ctx: MarkdownPostProcessorContext
 	): void {
 		const text = node.textContent || '';
 		const fragment = document.createDocumentFragment();
@@ -162,6 +184,7 @@ export class ReadingViewRenderer {
 				isEmbed: match.isEmbed,
 				linkText: match.linkText,
 				settings: this.settings,
+				onRelocate: (newPath) => this.handleRelocate(ctx, match.filePath, newPath, match.isEmbed, match.width, match.linkText),
 			});
 			fragment.appendChild(element);
 

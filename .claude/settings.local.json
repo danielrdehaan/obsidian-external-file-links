@@ -15,7 +15,8 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: External File Links plugin with configurable drop behavior\n\nObsidian plugin that creates ext:// links to external files via drag and drop.\n\nFeatures:\n- Configurable default drop action \\(external link vs import to vault\\)\n- Modifier key \\(Shift/Ctrl/Meta\\) to toggle alternate drop behavior\n- Alt/Option toggles between embed and link style\n- Support for images, videos, audio, PDFs with inline previews\n- Configurable max image width and PDF height\n- Missing file placeholder option\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(gh repo create:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd README with usage documentation\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(node -e:*)"
     ]
   }
 }

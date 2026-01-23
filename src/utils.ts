@@ -1,4 +1,4 @@
-import { FileType, ExternalFileMatch } from './types';
+import { FileType, ExternalFileMatch, FileAccessError } from './types';
 import { Platform } from 'obsidian';
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif'];
@@ -155,6 +155,55 @@ export function getMimeType(filePath: string): string {
 // Cache for blob URLs to avoid re-reading files
 const blobUrlCache = new Map<string, string>();
 
+// Token that changes when external files should be reloaded
+// Used to force widget recreation in live preview
+let reloadToken = 0;
+
+/**
+ * Gets the current reload token. Used by widgets to track when a reload is requested.
+ */
+export function getReloadToken(): number {
+	return reloadToken;
+}
+
+/**
+ * Clears the blob URL cache, allowing files to be re-read from disk.
+ * This is useful when external drives are mounted after the initial load.
+ * Also increments the reload token to force widget recreation.
+ */
+export function clearBlobUrlCache(): void {
+	// Revoke all existing blob URLs to free memory
+	for (const url of blobUrlCache.values()) {
+		URL.revokeObjectURL(url);
+	}
+	blobUrlCache.clear();
+
+	// Increment reload token to force widget recreation
+	reloadToken++;
+}
+
+export function createFileAccessError(filePath: string, error: any): FileAccessError {
+	const code = error?.code;
+	switch (code) {
+		case 'ENOENT':
+			return { type: 'not-found', code, filePath, message: 'File not found' };
+		case 'ENODEV':
+		case 'ENXIO':
+			return { type: 'not-mounted', code, filePath, message: 'Volume not mounted' };
+		case 'EACCES':
+		case 'EPERM':
+			return { type: 'permission', code, filePath, message: 'Permission denied' };
+		case 'EIO':
+			return { type: 'io-error', code, filePath, message: 'Error reading file' };
+		case 'ENOTDIR':
+		case 'EISDIR':
+		case 'EINVAL':
+			return { type: 'invalid-path', code, filePath, message: 'Invalid path' };
+		default:
+			return { type: 'unknown', code, filePath, message: 'Unable to access file' };
+	}
+}
+
 export async function createBlobUrl(filePath: string): Promise<string> {
 	// Check cache first
 	if (blobUrlCache.has(filePath)) {
@@ -174,7 +223,7 @@ export async function createBlobUrl(filePath: string): Promise<string> {
 		return url;
 	} catch (error) {
 		console.error('[ExternalFileLinks] Failed to read file:', filePath, error);
-		throw error;
+		throw createFileAccessError(filePath, error);
 	}
 }
 

@@ -1,11 +1,11 @@
-import { Plugin } from 'obsidian';
+import { Plugin, MarkdownView } from 'obsidian';
 import { ExternalFileLinksSettings } from './types';
 import { DEFAULT_SETTINGS } from './settings';
 import { DragDropHandler } from './DragDropHandler';
 import { ReadingViewRenderer } from './ReadingViewRenderer';
 import { createLivePreviewExtension } from './LivePreviewExtension';
 import { ExternalFileLinksSettingTab } from './SettingsTab';
-import { createEmbedSyntax, createLinkSyntax } from './utils';
+import { createEmbedSyntax, createLinkSyntax, clearBlobUrlCache } from './utils';
 
 export default class ExternalFileLinksPlugin extends Plugin {
 	settings: ExternalFileLinksSettings;
@@ -50,6 +50,12 @@ export default class ExternalFileLinksPlugin extends Plugin {
 					editor.replaceSelection(createLinkSyntax(filePath));
 				}
 			},
+		});
+
+		this.addCommand({
+			id: 'reload-external-files',
+			name: 'Reload external files',
+			callback: () => this.reloadExternalFiles(),
 		});
 
 		console.log('External File Links plugin loaded');
@@ -107,5 +113,45 @@ export default class ExternalFileLinksPlugin extends Plugin {
 			console.error('Failed to open file dialog:', error);
 			return null;
 		}
+	}
+
+	/**
+	 * Reloads all external files by clearing the cache and refreshing all views.
+	 * Useful after mounting an external drive or NAS that was unavailable.
+	 */
+	private reloadExternalFiles(): void {
+		// Clear the blob URL cache so files are re-read from disk
+		clearBlobUrlCache();
+
+		// Refresh all open markdown views
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.view instanceof MarkdownView) {
+				const view = leaf.view as MarkdownView;
+
+				// For reading mode: re-render the preview
+				if (view.getMode() === 'preview') {
+					// Get the preview section and trigger a re-render
+					const previewMode = (view as any).previewMode;
+					if (previewMode?.rerender) {
+						previewMode.rerender(true);
+					}
+				}
+
+				// For live preview / source mode: trigger editor update
+				const editor = view.editor;
+				if (editor) {
+					// Access the underlying CodeMirror EditorView
+					const cm = (editor as any).cm as import('@codemirror/view').EditorView;
+					if (cm) {
+						// Dispatch a no-op transaction to force decoration rebuild
+						cm.dispatch({
+							effects: [],
+						});
+					}
+				}
+			}
+		});
+
+		console.log('[ExternalFileLinks] Reloaded external files');
 	}
 }
