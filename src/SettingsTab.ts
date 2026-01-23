@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import { ExternalFileLinksSettings, ModifierKey } from './types';
 import ExternalFileLinksPlugin from './main';
+import { logger, LogLevel } from './logger';
 
 export class ExternalFileLinksSettingTab extends PluginSettingTab {
 	plugin: ExternalFileLinksPlugin;
@@ -138,6 +139,27 @@ export class ExternalFileLinksSettingTab extends PluginSettingTab {
 		}
 
 		modList.createEl('li', { text: 'Alt/Option + Drop: Toggle between embed and link style' });
+
+		// Advanced section
+		containerEl.createEl('h3', { text: 'Advanced' });
+
+		new Setting(containerEl)
+			.setName('Log level')
+			.setDesc('Control console logging verbosity (for debugging)')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('none', 'None')
+					.addOption('error', 'Errors only')
+					.addOption('warn', 'Warnings & errors')
+					.addOption('info', 'Info & above')
+					.addOption('debug', 'Debug (verbose)')
+					.setValue(this.plugin.settings.logLevel)
+					.onChange(async (value) => {
+						this.plugin.settings.logLevel = value as LogLevel;
+						await this.plugin.saveSettings();
+						logger.setLevel(value as LogLevel);
+					})
+			);
 	}
 
 	private getModifierDisplayName(modifier: ModifierKey): string {

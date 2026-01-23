@@ -1,7 +1,7 @@
 import { MarkdownPostProcessorContext, Plugin, TFile } from 'obsidian';
 import { ExternalFileLinksSettings } from './types';
 import { renderExternalFile } from './FileRenderer';
-import { EMBED_PATTERN, LINK_PATTERN, createEmbedSyntax, createLinkSyntax } from './utils';
+import { EMBED_PATTERN, LINK_PATTERN, createEmbedSyntax, createLinkSyntax, escapeRegExp } from './utils';
 
 export class ReadingViewRenderer {
 	private plugin: Plugin;
@@ -27,6 +27,9 @@ export class ReadingViewRenderer {
 	}
 
 	private processElement(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+		// Track occurrence counts per unique syntax string
+		const occurrenceCounts = new Map<string, number>();
+
 		// Look for text content that matches our patterns
 		// First, handle any img elements that Obsidian might have created from our syntax
 		const images = el.querySelectorAll('img');
@@ -37,7 +40,15 @@ export class ReadingViewRenderer {
 			// Check if this is our ext:// pattern in alt text
 			// Obsidian parses ![ext:///path] and puts "ext:///path" in alt
 			if (alt.startsWith('ext://')) {
-				this.replaceImageWithExternalEmbed(img, alt, ctx);
+				const match = alt.match(/^ext:\/\/(.+?)(?:\|(\d+))?$/);
+				if (match) {
+					const filePath = match[1];
+					const width = match[2] ? parseInt(match[2], 10) : undefined;
+					const syntax = createEmbedSyntax(filePath, width);
+					const occurrenceIndex = occurrenceCounts.get(syntax) ?? 0;
+					occurrenceCounts.set(syntax, occurrenceIndex + 1);
+					this.replaceImageWithExternalEmbed(img, alt, ctx, occurrenceIndex);
+				}
 			}
 		});
 
@@ -46,15 +57,25 @@ export class ReadingViewRenderer {
 		links.forEach((link) => {
 			const href = link.getAttribute('href') || '';
 			if (href.startsWith('ext://')) {
-				this.replaceLinkWithExternalLink(link, href, ctx);
+				const filePath = href.replace(/^ext:\/\//, '');
+				const linkText = link.textContent || undefined;
+				const syntax = createLinkSyntax(filePath, linkText);
+				const occurrenceIndex = occurrenceCounts.get(syntax) ?? 0;
+				occurrenceCounts.set(syntax, occurrenceIndex + 1);
+				this.replaceLinkWithExternalLink(link, href, ctx, occurrenceIndex);
 			}
 		});
 
 		// Also check for any remaining text that wasn't parsed by Obsidian
-		this.processTextNodes(el, ctx);
+		this.processTextNodes(el, ctx, occurrenceCounts);
 	}
 
-	private replaceImageWithExternalEmbed(img: HTMLElement, alt: string, ctx: MarkdownPostProcessorContext): void {
+	private replaceImageWithExternalEmbed(
+		img: HTMLElement,
+		alt: string,
+		ctx: MarkdownPostProcessorContext,
+		occurrenceIndex: number
+	): void {
 		// Parse alt text: "ext:///path" or "ext:///path|width"
 		const match = alt.match(/^ext:\/\/(.+?)(?:\|(\d+))?$/);
 		if (!match) return;
@@ -67,13 +88,18 @@ export class ReadingViewRenderer {
 			width,
 			isEmbed: true,
 			settings: this.settings,
-			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, true, width),
+			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, true, occurrenceIndex, width),
 		});
 
 		img.replaceWith(embed);
 	}
 
-	private replaceLinkWithExternalLink(link: HTMLElement, href: string, ctx: MarkdownPostProcessorContext): void {
+	private replaceLinkWithExternalLink(
+		link: HTMLElement,
+		href: string,
+		ctx: MarkdownPostProcessorContext,
+		occurrenceIndex: number
+	): void {
 		// Parse href: "ext:///path"
 		const filePath = href.replace(/^ext:\/\//, '');
 		const linkText = link.textContent || undefined;
@@ -83,7 +109,7 @@ export class ReadingViewRenderer {
 			isEmbed: false,
 			linkText,
 			settings: this.settings,
-			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, false, undefined, linkText),
+			onRelocate: (newPath) => this.handleRelocate(ctx, filePath, newPath, false, occurrenceIndex, undefined, linkText),
 		});
 
 		link.replaceWith(externalLink);
@@ -94,6 +120,7 @@ export class ReadingViewRenderer {
 		oldPath: string,
 		newPath: string,
 		isEmbed: boolean,
+		occurrenceIndex: number,
 		width?: number,
 		linkText?: string
 	): Promise<void> {
@@ -104,11 +131,20 @@ export class ReadingViewRenderer {
 		const oldSyntax = isEmbed ? createEmbedSyntax(oldPath, width) : createLinkSyntax(oldPath, linkText);
 		const newSyntax = isEmbed ? createEmbedSyntax(newPath, width) : createLinkSyntax(newPath, linkText);
 
-		const newContent = content.replace(oldSyntax, newSyntax);
+		// Replace only the Nth occurrence
+		let count = 0;
+		const newContent = content.replace(
+			new RegExp(escapeRegExp(oldSyntax), 'g'),
+			(match) => (count++ === occurrenceIndex ? newSyntax : match)
+		);
 		await this.plugin.app.vault.modify(file, newContent);
 	}
 
-	private processTextNodes(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+	private processTextNodes(
+		el: HTMLElement,
+		ctx: MarkdownPostProcessorContext,
+		occurrenceCounts: Map<string, number>
+	): void {
 		const walker = document.createTreeWalker(
 			el,
 			NodeFilter.SHOW_TEXT,
@@ -152,14 +188,15 @@ export class ReadingViewRenderer {
 
 		// Process collected nodes (in reverse to avoid index issues)
 		for (const { node, matches } of nodesToProcess.reverse()) {
-			this.replaceTextNode(node, matches, ctx);
+			this.replaceTextNode(node, matches, ctx, occurrenceCounts);
 		}
 	}
 
 	private replaceTextNode(
 		node: Text,
 		matches: Array<{ fullMatch: string; filePath: string; width?: number; isEmbed: boolean; linkText?: string }>,
-		ctx: MarkdownPostProcessorContext
+		ctx: MarkdownPostProcessorContext,
+		occurrenceCounts: Map<string, number>
 	): void {
 		const text = node.textContent || '';
 		const fragment = document.createDocumentFragment();
@@ -177,6 +214,13 @@ export class ReadingViewRenderer {
 				fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
 			}
 
+			// Get occurrence index for this syntax
+			const syntax = match.isEmbed
+				? createEmbedSyntax(match.filePath, match.width)
+				: createLinkSyntax(match.filePath, match.linkText);
+			const occurrenceIndex = occurrenceCounts.get(syntax) ?? 0;
+			occurrenceCounts.set(syntax, occurrenceIndex + 1);
+
 			// Add the rendered element
 			const element = renderExternalFile({
 				filePath: match.filePath,
@@ -184,7 +228,7 @@ export class ReadingViewRenderer {
 				isEmbed: match.isEmbed,
 				linkText: match.linkText,
 				settings: this.settings,
-				onRelocate: (newPath) => this.handleRelocate(ctx, match.filePath, newPath, match.isEmbed, match.width, match.linkText),
+				onRelocate: (newPath) => this.handleRelocate(ctx, match.filePath, newPath, match.isEmbed, occurrenceIndex, match.width, match.linkText),
 			});
 			fragment.appendChild(element);
 

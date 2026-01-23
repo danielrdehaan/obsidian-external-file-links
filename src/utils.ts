@@ -1,5 +1,6 @@
 import { FileType, ExternalFileMatch, FileAccessError } from './types';
 import { Platform } from 'obsidian';
+import { logger } from './logger';
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif'];
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'ogv', 'm4v'];
@@ -79,6 +80,10 @@ export function createLinkSyntax(filePath: string, linkText?: string): string {
 export function getFileName(filePath: string): string {
 	const parts = filePath.replace(/\\/g, '/').split('/');
 	return parts[parts.length - 1] || filePath;
+}
+
+export function escapeRegExp(string: string): string {
+	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function parseExternalFileReferences(text: string): ExternalFileMatch[] {
@@ -222,7 +227,7 @@ export async function createBlobUrl(filePath: string): Promise<string> {
 
 		return url;
 	} catch (error) {
-		console.error('[ExternalFileLinks] Failed to read file:', filePath, error);
+		logger.error('Failed to read file:', filePath, error);
 		throw createFileAccessError(filePath, error);
 	}
 }

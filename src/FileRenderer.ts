@@ -338,9 +338,14 @@ async function selectFile(): Promise<string | null> {
 
 function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): HTMLElement {
 	const { filePath, error, onRetry, onRelocate } = options;
+	const fileNameStr = getFileName(filePath);
+
+	// Generate unique ID for ARIA references
+	const uniqueId = `ext-file-error-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 	const container = document.createElement('div');
 	container.addClass('external-file-missing');
+	container.setAttribute('role', 'alert');
 
 	// Header row: icon + message
 	const header = document.createElement('div');
@@ -352,6 +357,7 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 
 	const message = document.createElement('span');
 	message.addClass('external-file-missing-message');
+	message.id = `${uniqueId}-msg`;
 	message.textContent = error?.message ?? 'File not found';
 
 	header.appendChild(icon);
@@ -363,7 +369,7 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 
 	const fileName = document.createElement('span');
 	fileName.addClass('external-file-missing-filename');
-	fileName.textContent = getFileName(filePath);
+	fileName.textContent = fileNameStr;
 
 	const path = document.createElement('span');
 	path.addClass('external-file-missing-path');
@@ -380,6 +386,8 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 	// Action buttons row
 	const actions = document.createElement('div');
 	actions.addClass('external-file-missing-actions');
+	actions.setAttribute('role', 'group');
+	actions.setAttribute('aria-label', 'File recovery actions');
 
 	// Retry button
 	if (onRetry) {
@@ -387,6 +395,8 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 		retryBtn.addClass('external-file-action-btn');
 		retryBtn.textContent = 'Retry';
 		retryBtn.title = 'Try loading the file again';
+		retryBtn.setAttribute('aria-label', `Retry loading ${fileNameStr}`);
+		retryBtn.setAttribute('aria-describedby', `${uniqueId}-msg`);
 		retryBtn.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
@@ -400,6 +410,7 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 	revealBtn.addClass('external-file-action-btn');
 	revealBtn.textContent = 'Show Folder';
 	revealBtn.title = 'Open parent folder in file manager';
+	revealBtn.setAttribute('aria-label', `Show folder containing ${fileNameStr}`);
 	revealBtn.addEventListener('click', (e) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -413,6 +424,8 @@ function createMissingFilePlaceholder(options: MissingFilePlaceholderOptions): H
 		relocateBtn.addClass('external-file-action-btn');
 		relocateBtn.textContent = 'Relocate';
 		relocateBtn.title = 'Select new file location';
+		relocateBtn.setAttribute('aria-label', `Select new location for ${fileNameStr}`);
+		relocateBtn.setAttribute('aria-describedby', `${uniqueId}-msg`);
 		relocateBtn.addEventListener('click', async (e) => {
 			e.preventDefault();
 			e.stopPropagation();

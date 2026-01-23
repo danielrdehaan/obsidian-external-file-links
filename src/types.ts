@@ -34,4 +34,5 @@ export interface ExternalFileLinksSettings {
 	imageMaxWidth: number;
 	pdfHeight: string;
 	showMissingFilePlaceholder: boolean;
+	logLevel: 'debug' | 'info' | 'warn' | 'error' | 'none';
 }

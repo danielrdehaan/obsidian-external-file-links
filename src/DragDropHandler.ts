@@ -1,6 +1,7 @@
 import { Editor, MarkdownView, Plugin, WorkspaceLeaf } from 'obsidian';
 import { ExternalFileLinksSettings, ModifierKey } from './types';
 import { createEmbedSyntax, createLinkSyntax, getFileType } from './utils';
+import { logger } from './logger';
 
 // Get file path using Electron's webUtils (for newer Electron versions)
 function getFilePath(file: File): string | undefined {
@@ -47,7 +48,7 @@ export class DragDropHandler {
 			(evt: DragEvent) => {
 				// Check if dragging files from outside
 				if (evt.dataTransfer?.types?.includes('Files')) {
-					console.log('[ExternalFileLinks] Dragover with files');
+					logger.debug('Dragover with files');
 				}
 			},
 			true
@@ -55,18 +56,18 @@ export class DragDropHandler {
 	}
 
 	private handleDrop(evt: DragEvent): void {
-		console.log('[ExternalFileLinks] Drop event captured');
+		logger.debug('Drop event captured');
 
 		// Only handle drops on editor elements
 		const target = evt.target as HTMLElement;
-		console.log('[ExternalFileLinks] Target:', target?.className);
+		logger.debug('Target:', target?.className);
 		if (!target?.closest('.cm-editor')) {
-			console.log('[ExternalFileLinks] Not in editor, skipping');
+			logger.debug('Not in editor, skipping');
 			return;
 		}
 
 		const files = evt.dataTransfer?.files;
-		console.log('[ExternalFileLinks] Files count:', files?.length);
+		logger.debug('Files count:', files?.length);
 		if (!files || files.length === 0) {
 			return;
 		}
@@ -76,7 +77,7 @@ export class DragDropHandler {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const filePath = getFilePath(file);
-			console.log('[ExternalFileLinks] File:', {
+			logger.debug('File:', {
 				name: file.name,
 				path: filePath,
 				type: file.type,
@@ -88,18 +89,18 @@ export class DragDropHandler {
 			}
 		}
 
-		console.log('[ExternalFileLinks] External files count:', externalFiles.length);
+		logger.debug('External files count:', externalFiles.length);
 		if (externalFiles.length === 0) {
 			return;
 		}
 
 		// Determine if we should use external link or let Obsidian import
 		const useExternal = this.shouldUseExternalLink(evt);
-		console.log('[ExternalFileLinks] Use external link:', useExternal);
+		logger.debug('Use external link:', useExternal);
 
 		if (!useExternal) {
 			// Let Obsidian handle the import
-			console.log('[ExternalFileLinks] Letting Obsidian handle import');
+			logger.debug('Letting Obsidian handle import');
 			return;
 		}
 

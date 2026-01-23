@@ -7,4 +7,5 @@ export const DEFAULT_SETTINGS: ExternalFileLinksSettings = {
 	imageMaxWidth: 0, // 0 means no max width
 	pdfHeight: '600px',
 	showMissingFilePlaceholder: true,
+	logLevel: 'warn',
 };

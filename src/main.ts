@@ -6,6 +6,7 @@ import { ReadingViewRenderer } from './ReadingViewRenderer';
 import { createLivePreviewExtension } from './LivePreviewExtension';
 import { ExternalFileLinksSettingTab } from './SettingsTab';
 import { createEmbedSyntax, createLinkSyntax, clearBlobUrlCache } from './utils';
+import { logger } from './logger';
 
 export default class ExternalFileLinksPlugin extends Plugin {
 	settings: ExternalFileLinksSettings;
@@ -14,6 +15,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		logger.setLevel(this.settings.logLevel);
 
 		// Initialize handlers
 		this.dragDropHandler = new DragDropHandler(this, this.settings);
@@ -58,11 +60,11 @@ export default class ExternalFileLinksPlugin extends Plugin {
 			callback: () => this.reloadExternalFiles(),
 		});
 
-		console.log('External File Links plugin loaded');
+		logger.info('Plugin loaded');
 	}
 
 	onunload(): void {
-		console.log('External File Links plugin unloaded');
+		logger.info('Plugin unloaded');
 	}
 
 	async loadSettings(): Promise<void> {
@@ -75,6 +77,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 		// Update handlers with new settings
 		this.dragDropHandler.updateSettings(this.settings);
 		this.readingViewRenderer.updateSettings(this.settings);
+		logger.setLevel(this.settings.logLevel);
 	}
 
 	private async selectExternalFile(): Promise<string | null> {
@@ -94,7 +97,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 					const remote = require('@electron/remote');
 					dialog = remote.dialog;
 				} catch {
-					console.error('Could not access Electron dialog');
+					logger.error('Could not access Electron dialog');
 					return null;
 				}
 			}
@@ -110,7 +113,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 
 			return result.filePaths[0];
 		} catch (error) {
-			console.error('Failed to open file dialog:', error);
+			logger.error('Failed to open file dialog:', error);
 			return null;
 		}
 	}
@@ -152,6 +155,6 @@ export default class ExternalFileLinksPlugin extends Plugin {
 			}
 		});
 
-		console.log('[ExternalFileLinks] Reloaded external files');
+		logger.info('Reloaded external files');
 	}
 }
