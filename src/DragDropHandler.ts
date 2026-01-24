@@ -1,6 +1,6 @@
 import { Editor, MarkdownView, Plugin, WorkspaceLeaf } from 'obsidian';
-import { ExternalFileLinksSettings, ModifierKey } from './types';
-import { createEmbedSyntax, createLinkSyntax, getFileType } from './utils';
+import { ExternalFileLinksSettings, ModifierCombo, DropInsertStyle } from './types';
+import { createEmbedSyntax, createLinkSyntax, createRawPathSyntax, getFileType } from './utils';
 import { logger } from './logger';
 
 // Get file path using Electron's webUtils (for newer Electron versions)
@@ -94,13 +94,18 @@ export class DragDropHandler {
 			return;
 		}
 
-		// Determine if we should use external link or let Obsidian import
-		const useExternal = this.shouldUseExternalLink(evt);
-		logger.debug('Use external link:', useExternal);
+		// Check if import modifier combo is held - if so, let Obsidian handle it
+		if (this.isComboHeld(evt, this.settings.importModifier)) {
+			logger.debug('Import modifier combo held, letting Obsidian handle import');
+			return;
+		}
 
-		if (!useExternal) {
-			// Let Obsidian handle the import
-			logger.debug('Letting Obsidian handle import');
+		// Determine if default is external or import
+		const defaultIsExternal = this.settings.defaultDropAction === 'external';
+
+		// If default is import and no style modifier is held, let Obsidian handle it
+		if (!defaultIsExternal && !this.isAnyStyleModifierHeld(evt)) {
+			logger.debug('Default is import and no style modifier held, letting Obsidian handle import');
 			return;
 		}
 
@@ -118,18 +123,18 @@ export class DragDropHandler {
 		const editor = view.editor;
 		if (!editor) return;
 
-		// Determine if user wants link or embed style
-		// Alt/Option key toggles the default style
-		const altToggled = evt.altKey;
-		const defaultIsLink = this.settings.defaultDragBehavior === 'link';
-		const useLink = altToggled ? !defaultIsLink : defaultIsLink;
+		// Determine insert style based on modifier keys (priority: raw > link > embed > default)
+		const insertStyle = this.getInsertStyle(evt);
+		logger.debug('Insert style:', insertStyle);
 
 		// Build syntax for all dropped files
 		const syntaxParts: string[] = [];
 		for (const { path: filePath } of externalFiles) {
 			const fileType = getFileType(filePath);
 
-			if (useLink || fileType === 'other') {
+			if (insertStyle === 'raw') {
+				syntaxParts.push(createRawPathSyntax(filePath));
+			} else if (insertStyle === 'link' || fileType === 'other') {
 				syntaxParts.push(createLinkSyntax(filePath));
 			} else {
 				syntaxParts.push(createEmbedSyntax(filePath));
@@ -148,28 +153,64 @@ export class DragDropHandler {
 		editor.replaceSelection(syntax);
 	}
 
-	private shouldUseExternalLink(evt: DragEvent): boolean {
-		const defaultAction = this.settings.defaultDropAction;
-		const modifier = this.settings.alternateDropModifier;
-
-		// Check if modifier is held
-		const modifierHeld = this.isModifierHeld(evt, modifier);
-
-		// If modifier is held, do opposite of default
-		if (modifierHeld) {
-			return defaultAction === 'import'; // modifier flips behavior
-		}
-
-		// Otherwise, use default
-		return defaultAction === 'external';
+	/**
+	 * Check if the given modifier combo is enabled (has at least one key set)
+	 */
+	private isComboEnabled(combo: ModifierCombo): boolean {
+		return combo.shift || combo.ctrl || combo.meta || combo.alt;
 	}
 
-	private isModifierHeld(evt: DragEvent, modifier: ModifierKey): boolean {
-		if (modifier === 'none') return false;
-		if (modifier === 'shift') return evt.shiftKey;
-		if (modifier === 'ctrl') return evt.ctrlKey;
-		if (modifier === 'meta') return evt.metaKey;
-		return false;
+	/**
+	 * Check if the exact modifier combo is held (exact match - no extra keys)
+	 */
+	private isComboHeld(evt: DragEvent, combo: ModifierCombo): boolean {
+		// A combo with all keys false = disabled (never matches)
+		if (!this.isComboEnabled(combo)) {
+			return false;
+		}
+
+		logger.debug('Checking combo:', combo);
+		logger.debug('Event keys:', {
+			shiftKey: evt.shiftKey,
+			ctrlKey: evt.ctrlKey,
+			metaKey: evt.metaKey,
+			altKey: evt.altKey
+		});
+
+		// Exact match: all required keys must be held AND no extra modifier keys
+		const result = (
+			evt.shiftKey === combo.shift &&
+			evt.ctrlKey === combo.ctrl &&
+			evt.metaKey === combo.meta &&
+			evt.altKey === combo.alt
+		);
+
+		logger.debug('Combo match result:', result);
+		return result;
+	}
+
+	private isAnyStyleModifierHeld(evt: DragEvent): boolean {
+		return (
+			this.isComboHeld(evt, this.settings.embedModifier) ||
+			this.isComboHeld(evt, this.settings.linkModifier) ||
+			this.isComboHeld(evt, this.settings.rawPathModifier)
+		);
+	}
+
+	private getInsertStyle(evt: DragEvent): DropInsertStyle {
+		// Check modifiers in priority order: raw > link > embed
+		// This allows combining modifiers predictably
+		if (this.isComboHeld(evt, this.settings.rawPathModifier)) {
+			return 'raw';
+		}
+		if (this.isComboHeld(evt, this.settings.linkModifier)) {
+			return 'link';
+		}
+		if (this.isComboHeld(evt, this.settings.embedModifier)) {
+			return 'embed';
+		}
+		// Fall back to default style
+		return this.settings.defaultInsertStyle;
 	}
 
 	private getDropPosition(evt: DragEvent, editor: Editor, view: MarkdownView): { line: number; ch: number } | null {

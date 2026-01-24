@@ -1,6 +1,12 @@
 export type FileType = 'image' | 'video' | 'audio' | 'pdf' | 'other';
-export type ModifierKey = 'shift' | 'ctrl' | 'meta' | 'none';
 export type DefaultDropBehavior = 'external' | 'import';
+
+export interface ModifierCombo {
+	shift: boolean;
+	ctrl: boolean;
+	meta: boolean;
+	alt: boolean;
+}
 
 export type FileErrorType =
 	| 'not-found'      // ENOENT - file doesn't exist
@@ -27,10 +33,17 @@ export interface ExternalFileMatch {
 	end: number;
 }
 
+export type DropInsertStyle = 'embed' | 'link' | 'raw';
+
 export interface ExternalFileLinksSettings {
-	defaultDragBehavior: 'embed' | 'link';
 	defaultDropAction: DefaultDropBehavior;
-	alternateDropModifier: ModifierKey;
+	defaultInsertStyle: DropInsertStyle;
+	// Modifier key combinations for specific actions
+	importModifier: ModifierCombo;
+	embedModifier: ModifierCombo;
+	linkModifier: ModifierCombo;
+	rawPathModifier: ModifierCombo;
+	// Display settings
 	imageMaxWidth: number;
 	pdfHeight: string;
 	showMissingFilePlaceholder: boolean;

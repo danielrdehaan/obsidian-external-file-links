@@ -77,6 +77,10 @@ export function createLinkSyntax(filePath: string, linkText?: string): string {
 	return `[${text}](ext://${filePath})`;
 }
 
+export function createRawPathSyntax(filePath: string): string {
+	return `ext://${filePath}`;
+}
+
 export function getFileName(filePath: string): string {
 	const parts = filePath.replace(/\\/g, '/').split('/');
 	return parts[parts.length - 1] || filePath;

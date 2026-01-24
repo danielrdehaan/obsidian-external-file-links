@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import { ExternalFileLinksSettings, ModifierKey } from './types';
+import { ExternalFileLinksSettings, ModifierCombo, DropInsertStyle } from './types';
 import ExternalFileLinksPlugin from './main';
 import { logger, LogLevel } from './logger';
 
@@ -31,44 +31,79 @@ export class ExternalFileLinksSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.defaultDropAction = value as 'external' | 'import';
 						await this.plugin.saveSettings();
-						// Refresh to update the modifier description
 						this.display();
 					})
 			);
 
-		const modifierDesc = this.plugin.settings.defaultDropAction === 'external'
-			? 'Hold this key while dropping to import the file into your vault instead.'
-			: 'Hold this key while dropping to create an external file link instead.';
-
 		new Setting(containerEl)
-			.setName('Alternate action modifier')
-			.setDesc(modifierDesc)
+			.setName('Default insert style')
+			.setDesc('The default syntax style when creating external links.')
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('shift', 'Shift')
-					.addOption('ctrl', 'Ctrl/Cmd')
-					.addOption('meta', 'Meta (Cmd/Win)')
-					.addOption('none', 'None (disabled)')
-					.setValue(this.plugin.settings.alternateDropModifier)
+					.addOption('embed', 'Embed - ![ext:///path] (inline preview)')
+					.addOption('link', 'Link - [name](ext:///path) (clickable)')
+					.addOption('raw', 'Raw path - ext:///path (plain text)')
+					.setValue(this.plugin.settings.defaultInsertStyle)
 					.onChange(async (value) => {
-						this.plugin.settings.alternateDropModifier = value as ModifierKey;
+						this.plugin.settings.defaultInsertStyle = value as DropInsertStyle;
 						await this.plugin.saveSettings();
 					})
 			);
 
-		new Setting(containerEl)
-			.setName('External link style')
-			.setDesc('When creating external links, use embed (inline preview) or link (clickable). Hold Alt/Option while dropping to use the opposite style.')
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('embed', 'Embed (inline preview)')
-					.addOption('link', 'Link (clickable)')
-					.setValue(this.plugin.settings.defaultDragBehavior)
-					.onChange(async (value) => {
-						this.plugin.settings.defaultDragBehavior = value as 'embed' | 'link';
-						await this.plugin.saveSettings();
-					})
-			);
+		// Modifier Keys section
+		containerEl.createEl('h3', { text: 'Modifier Key Combinations' });
+		containerEl.createEl('p', {
+			text: 'Assign modifier key combinations to override the default behavior when dropping files. Toggle multiple keys to require a combination (e.g., Shift + Option).',
+			cls: 'setting-item-description'
+		});
+
+		this.createModifierComboSetting(
+			containerEl,
+			'Import to vault',
+			'Hold this combination to import the file into your vault instead of creating an external link.',
+			this.plugin.settings.importModifier,
+			async (combo) => {
+				this.plugin.settings.importModifier = combo;
+				await this.plugin.saveSettings();
+				this.display();
+			}
+		);
+
+		this.createModifierComboSetting(
+			containerEl,
+			'Insert as embed',
+			'Hold this combination to insert as embed syntax: ![ext:///path] (inline preview).',
+			this.plugin.settings.embedModifier,
+			async (combo) => {
+				this.plugin.settings.embedModifier = combo;
+				await this.plugin.saveSettings();
+				this.display();
+			}
+		);
+
+		this.createModifierComboSetting(
+			containerEl,
+			'Insert as link',
+			'Hold this combination to insert as link syntax: [name](ext:///path) (clickable).',
+			this.plugin.settings.linkModifier,
+			async (combo) => {
+				this.plugin.settings.linkModifier = combo;
+				await this.plugin.saveSettings();
+				this.display();
+			}
+		);
+
+		this.createModifierComboSetting(
+			containerEl,
+			'Insert as raw path',
+			'Hold this combination to insert as raw path: ext:///path (no brackets).',
+			this.plugin.settings.rawPathModifier,
+			async (combo) => {
+				this.plugin.settings.rawPathModifier = combo;
+				await this.plugin.saveSettings();
+				this.display();
+			}
+		);
 
 		// Display section
 		containerEl.createEl('h3', { text: 'Display' });
@@ -128,17 +163,38 @@ export class ExternalFileLinksSettingTab extends PluginSettingTab {
 		usageEl.createEl('h4', { text: 'Keyboard Modifiers' });
 		const modList = usageEl.createEl('ul');
 
-		// Show configured alternate action modifier
-		const modifier = this.plugin.settings.alternateDropModifier;
-		if (modifier !== 'none') {
-			const modifierName = this.getModifierDisplayName(modifier);
-			const alternateAction = this.plugin.settings.defaultDropAction === 'external'
-				? 'Import file into vault'
-				: 'Create external file link';
-			modList.createEl('li', { text: `${modifierName} + Drop: ${alternateAction}` });
+		// Show configured modifier key combinations
+		const { importModifier, embedModifier, linkModifier, rawPathModifier } = this.plugin.settings;
+
+		const importDisplay = this.getComboDisplayName(importModifier);
+		const embedDisplay = this.getComboDisplayName(embedModifier);
+		const linkDisplay = this.getComboDisplayName(linkModifier);
+		const rawDisplay = this.getComboDisplayName(rawPathModifier);
+
+		if (importDisplay) {
+			modList.createEl('li', {
+				text: `${importDisplay} + Drop: Import file into vault`
+			});
+		}
+		if (embedDisplay) {
+			modList.createEl('li', {
+				text: `${embedDisplay} + Drop: Insert as embed (inline preview)`
+			});
+		}
+		if (linkDisplay) {
+			modList.createEl('li', {
+				text: `${linkDisplay} + Drop: Insert as clickable link`
+			});
+		}
+		if (rawDisplay) {
+			modList.createEl('li', {
+				text: `${rawDisplay} + Drop: Insert as raw path`
+			});
 		}
 
-		modList.createEl('li', { text: 'Alt/Option + Drop: Toggle between embed and link style' });
+		if (!importDisplay && !embedDisplay && !linkDisplay && !rawDisplay) {
+			modList.createEl('li', { text: 'No modifier key combinations configured' });
+		}
 
 		// Advanced section
 		containerEl.createEl('h3', { text: 'Advanced' });
@@ -162,12 +218,68 @@ export class ExternalFileLinksSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private getModifierDisplayName(modifier: ModifierKey): string {
-		switch (modifier) {
-			case 'shift': return 'Shift';
-			case 'ctrl': return 'Ctrl/Cmd';
-			case 'meta': return 'Meta (Cmd/Win)';
-			default: return modifier;
-		}
+	/**
+	 * Get a display string for a modifier combo (e.g., "Shift + Option")
+	 * Returns empty string if combo is disabled
+	 */
+	private getComboDisplayName(combo: ModifierCombo): string {
+		const keys: string[] = [];
+		if (combo.shift) keys.push('Shift');
+		if (combo.ctrl) keys.push('Ctrl');
+		if (combo.meta) keys.push('Cmd');
+		if (combo.alt) keys.push('Option');
+		return keys.join(' + ');
+	}
+
+	/**
+	 * Create a setting with toggle buttons for modifier key combination
+	 */
+	private createModifierComboSetting(
+		containerEl: HTMLElement,
+		name: string,
+		desc: string,
+		combo: ModifierCombo,
+		onChange: (combo: ModifierCombo) => Promise<void>
+	): void {
+		const setting = new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc);
+
+		// Create a container for the toggles
+		const toggleContainer = setting.controlEl.createDiv({ cls: 'modifier-combo-toggles' });
+		toggleContainer.style.display = 'flex';
+		toggleContainer.style.gap = '8px';
+		toggleContainer.style.alignItems = 'center';
+		toggleContainer.style.flexWrap = 'wrap';
+
+		// Helper to create a toggle button
+		const createToggle = (label: string, key: keyof ModifierCombo) => {
+			const btn = toggleContainer.createEl('button', {
+				text: label,
+				cls: combo[key] ? 'mod-cta' : ''
+			});
+			btn.style.minWidth = '60px';
+			btn.style.padding = '4px 8px';
+			btn.addEventListener('click', async () => {
+				const newCombo = { ...combo, [key]: !combo[key] };
+				await onChange(newCombo);
+			});
+		};
+
+		createToggle('Shift', 'shift');
+		createToggle('Ctrl', 'ctrl');
+		createToggle('Cmd', 'meta');
+		createToggle('Option', 'alt');
+
+		// Show preview of the combination
+		const preview = toggleContainer.createEl('span', {
+			cls: 'modifier-combo-preview'
+		});
+		preview.style.marginLeft = '12px';
+		preview.style.color = 'var(--text-muted)';
+		preview.style.fontStyle = 'italic';
+
+		const displayName = this.getComboDisplayName(combo);
+		preview.textContent = displayName ? `(${displayName})` : '(disabled)';
 	}
 }
