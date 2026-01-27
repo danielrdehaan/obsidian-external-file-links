@@ -14,6 +14,10 @@ export type FileErrorType =
 	| 'permission'     // EACCES, EPERM - access denied
 	| 'io-error'       // EIO - read/write error
 	| 'invalid-path'   // ENOTDIR, EISDIR, EINVAL - path problems
+	| 'decode-error'   // MEDIA_ERR_DECODE - media decoding failed
+	| 'format-error'   // MEDIA_ERR_SRC_NOT_SUPPORTED - unsupported format
+	| 'network-error'  // MEDIA_ERR_NETWORK - network error during load
+	| 'aborted'        // MEDIA_ERR_ABORTED - loading aborted
 	| 'unknown';
 
 export interface FileAccessError {

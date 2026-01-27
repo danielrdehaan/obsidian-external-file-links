@@ -1,4 +1,5 @@
-import { MarkdownPostProcessorContext, Plugin, TFile } from 'obsidian';
+import { MarkdownPostProcessorContext, Notice, Plugin, TFile } from 'obsidian';
+import { logger } from './logger';
 import { ExternalFileLinksSettings } from './types';
 import { renderExternalFile } from './FileRenderer';
 import { EMBED_PATTERN, LINK_PATTERN, createEmbedSyntax, createLinkSyntax, escapeRegExp } from './utils';
@@ -127,16 +128,25 @@ export class ReadingViewRenderer {
 		const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
 		if (!(file instanceof TFile)) return;
 
-		const content = await this.plugin.app.vault.read(file);
+		const originalContent = await this.plugin.app.vault.read(file);
 		const oldSyntax = isEmbed ? createEmbedSyntax(oldPath, width) : createLinkSyntax(oldPath, linkText);
 		const newSyntax = isEmbed ? createEmbedSyntax(newPath, width) : createLinkSyntax(newPath, linkText);
 
 		// Replace only the Nth occurrence
 		let count = 0;
-		const newContent = content.replace(
+		const newContent = originalContent.replace(
 			new RegExp(escapeRegExp(oldSyntax), 'g'),
 			(match) => (count++ === occurrenceIndex ? newSyntax : match)
 		);
+
+		// Conflict detection: re-read and verify file wasn't modified
+		const currentContent = await this.plugin.app.vault.read(file);
+		if (currentContent !== originalContent) {
+			logger.warn('File modified during relocate, aborting');
+			new Notice('Could not update: note was modified. Please try again.');
+			return;
+		}
+
 		await this.plugin.app.vault.modify(file, newContent);
 	}
 

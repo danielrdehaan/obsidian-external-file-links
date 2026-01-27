@@ -6,6 +6,7 @@ import { ReadingViewRenderer } from './ReadingViewRenderer';
 import { createLivePreviewExtension } from './LivePreviewExtension';
 import { ExternalFileLinksSettingTab } from './SettingsTab';
 import { createEmbedSyntax, createLinkSyntax, clearBlobUrlCache } from './utils';
+import { selectExternalFile } from './dialog';
 import { logger } from './logger';
 
 export default class ExternalFileLinksPlugin extends Plugin {
@@ -36,7 +37,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 			id: 'insert-external-file-embed',
 			name: 'Insert external file (embed)',
 			editorCallback: async (editor) => {
-				const filePath = await this.selectExternalFile();
+				const filePath = await selectExternalFile();
 				if (filePath) {
 					editor.replaceSelection(createEmbedSyntax(filePath));
 				}
@@ -47,7 +48,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 			id: 'insert-external-file-link',
 			name: 'Insert external file (link)',
 			editorCallback: async (editor) => {
-				const filePath = await this.selectExternalFile();
+				const filePath = await selectExternalFile();
 				if (filePath) {
 					editor.replaceSelection(createLinkSyntax(filePath));
 				}
@@ -64,6 +65,7 @@ export default class ExternalFileLinksPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		clearBlobUrlCache();
 		logger.info('Plugin unloaded');
 	}
 
@@ -78,44 +80,6 @@ export default class ExternalFileLinksPlugin extends Plugin {
 		this.dragDropHandler.updateSettings(this.settings);
 		this.readingViewRenderer.updateSettings(this.settings);
 		logger.setLevel(this.settings.logLevel);
-	}
-
-	private async selectExternalFile(): Promise<string | null> {
-		// Use Electron's dialog to select a file
-		try {
-			// Try to get the dialog module from electron remote
-			let dialog;
-			try {
-				const electron = require('electron');
-				dialog = electron.remote?.dialog;
-			} catch {
-				// Fallback to @electron/remote if available
-			}
-
-			if (!dialog) {
-				try {
-					const remote = require('@electron/remote');
-					dialog = remote.dialog;
-				} catch {
-					logger.error('Could not access Electron dialog');
-					return null;
-				}
-			}
-
-			const result = await dialog.showOpenDialog({
-				properties: ['openFile'],
-				title: 'Select External File',
-			});
-
-			if (result.canceled || result.filePaths.length === 0) {
-				return null;
-			}
-
-			return result.filePaths[0];
-		} catch (error) {
-			logger.error('Failed to open file dialog:', error);
-			return null;
-		}
 	}
 
 	/**
